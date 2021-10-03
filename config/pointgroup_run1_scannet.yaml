@@ -5,9 +5,9 @@ GENERAL:
   dataset_dir: data/scannetv2_inst.py
 
 DATA:
-  data_root: dataset
+  data_root: /root/PointGroup/dataset
   dataset: scannetv2
-  filename_suffix: _inst_nostuff.pth
+  filename_suffix: _inst_notstuff.pth
 
   classes: 20
   ignore_label: -100

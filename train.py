@@ -78,13 +78,13 @@ def train_epoch(train_loader, model, model_fn, optimizer, epoch):
         remain_time = '{:02d}:{:02d}:{:02d}'.format(int(t_h), int(t_m), int(t_s))
 
         sys.stdout.write(
-            "epoch: {}/{} iter: {}/{} loss: {:.4f}({:.4f}) data_time: {:.2f}({:.2f}) iter_time: {:.2f}({:.2f}) remain_time: {remain_time}\n".format
+            "epoch: {:3d}/{:3d} iter: {:3d}/{:3d} loss: {:.4f}({:.4f}) data_time: {:.2f}({:.2f}) iter_time: {:.2f}({:.2f}) remain_time: {remain_time}\n".format
             (epoch, cfg.epochs, i + 1, len(train_loader), am_dict['loss'].val, am_dict['loss'].avg,
              data_time.val, data_time.avg, iter_time.val, iter_time.avg, remain_time=remain_time))
         if (i == len(train_loader) - 1): print()
 
 
-    logger.info("epoch: {}/{}, train loss: {:.4f}, time: {}s".format(epoch, cfg.epochs, am_dict['loss'].avg, time.time() - start_epoch))
+    logger.info(f"epoch: {epoch:4d}/{cfg.epochs:4d}, train loss: {am_dict['loss'].avg:.4f}, time: {time.time() - start_epoch}s")
 
     utils.checkpoint_save(model, cfg.exp_path, cfg.config.split('/')[-1][:-5], epoch, cfg.save_freq, use_cuda)
 
@@ -170,6 +170,12 @@ if __name__ == '__main__':
         else:
             print("Error: no data loader - " + data_name)
             exit(0)
+    elif cfg.dataset == 'scan2cad':
+        if data_name == 'scan2cad':
+            import data.scan2cad_inst
+            dataset = data.scan2cad_inst.Dataset()
+            dataset.trainLoader()
+            dataset.valLoader()
 
     ##### resume
     start_epoch = utils.checkpoint_restore(model, cfg.exp_path, cfg.config.split('/')[-1][:-5], use_cuda)      # resume from the latest epoch, or specify the epoch to restore

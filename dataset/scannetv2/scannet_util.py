@@ -1,7 +1,10 @@
 g_label_names = ['unannotated', 'wall', 'floor', 'chair', 'table', 'desk', 'bed', 'bookshelf', 'sofa', 'sink', 'bathtub', 'toilet', 'curtain', 'counter', 'door', 'window', 'shower curtain', 'refridgerator', 'picture', 'cabinet', 'otherfurniture']
 
+DIR_PATH = '/root/PointGroup'
+DATASET_DIR = '/dataset/scannetv2'
+
 def get_raw2scannetv2_label_map():
-    lines = [line.rstrip() for line in open('scannetv2-labels.combined.tsv')]
+    lines = [line.rstrip() for line in open(DIR_PATH+DATASET_DIR+'/scannetv2-labels.combined.tsv')]
     lines_0 = lines[0].split('\t')
     print(lines_0)
     print(len(lines))

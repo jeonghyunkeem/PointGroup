@@ -7,13 +7,13 @@ import torch
 import time
 import numpy as np
 import random
-import os
+import os, sys
 
 from util.config import cfg
 cfg.task = 'test'
 from util.log import logger
 import util.utils as utils
-import util.eval as eval
+import util.eval_scan2cad as eval
 
 def init():
     global result_dir
@@ -27,7 +27,10 @@ def init():
     os.system('cp {} {}'.format(cfg.config, backup_dir))
 
     global semantic_label_idx
-    semantic_label_idx = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 24, 28, 33, 34, 36, 39]
+    # semantic_label_idx = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 24, 28, 33, 34, 36, 39]
+    semantic_label_idx = [0,1,2,3,4,5,6,7,8,9,10,11,17,20,23,24,26,31,32,34]
+    semantic_label_idx = [idx+1 for idx in semantic_label_idx]
+    assert(len(semantic_label_idx)==20)
 
     logger.info(cfg)
 
@@ -48,6 +51,12 @@ def test(model, model_fn, data_name, epoch):
         else:
             print("Error: no data loader - " + data_name)
             exit(0)
+    elif cfg.dataset == 'scan2cad':
+        if data_name == 'scan2cad':
+            import data.scan2cad_inst
+            dataset = data.scan2cad_inst.Dataset(test=True)
+            dataset.testLoader()
+
     dataloader = dataset.test_data_loader
 
     with torch.no_grad():
@@ -119,6 +128,7 @@ def test(model, model_fn, data_name, epoch):
                     pred_info['mask'] = clusters.cpu().numpy()
                     gt_file = os.path.join(cfg.data_root, cfg.dataset, cfg.split + '_gt', test_scene_name + '.txt')
                     gt2pred, pred2gt = eval.assign_instances_for_scan(test_scene_name, pred_info, gt_file)
+                    if gt2pred == None and pred2gt == None: continue
                     matches[test_scene_name] = {}
                     matches[test_scene_name]['gt'] = gt2pred
                     matches[test_scene_name]['pred'] = pred2gt
@@ -137,7 +147,6 @@ def test(model, model_fn, data_name, epoch):
                 coords_offsets = np.concatenate((coords_np, pt_offsets_np), 1)   # (N, 6)
                 np.save(os.path.join(result_dir, 'coords_offsets', test_scene_name + '.npy'), coords_offsets)
 
-
             if(epoch > cfg.prepare_epochs and cfg.save_instance):
                 f = open(os.path.join(result_dir, test_scene_name + '.txt'), 'w')
                 for proposal_id in range(nclusters):
@@ -154,7 +163,7 @@ def test(model, model_fn, data_name, epoch):
             start = time.time()
 
             ##### print
-            logger.info("instance iter: {}/{} point_num: {} ncluster: {} time: total {:.2f}s inference {:.2f}s save {:.2f}s".format(batch['id'][0] + 1, len(dataset.test_files), N, nclusters, end, end1, end3))
+            logger.info(f"instance iter: {(batch['id'][0] + 1):4d}/{len(dataset.test_files):4d} {test_scene_name:13s} point_num: {N:6d} ncluster: {nclusters:2d} time: total {end:.2f}s inference {end1:.2f}s save {end3:.2f}s")
 
         ##### evaluation
         if cfg.eval:
