@@ -13,7 +13,7 @@ from util.config import cfg
 cfg.task = 'test'
 from util.log import logger
 import util.utils as utils
-import util.eval_scan2cad as eval
+import util.eval_partnet as eval
 
 def init():
     global result_dir
@@ -28,9 +28,10 @@ def init():
 
     global semantic_label_idx
     # semantic_label_idx = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 24, 28, 33, 34, 36, 39]
-    semantic_label_idx = [0,1,2,3,4,5,6,7,8,9,10,11,17,20,23,24,26,31,32,34]
-    semantic_label_idx = [idx+1 for idx in semantic_label_idx]
-    assert(len(semantic_label_idx)==20)
+    # semantic_label_idx = [0,1,2,3,4,5,6,7,8,9,10,11,17,20,23,24,26,31,32,34]
+    # semantic_label_idx = [idx+1 for idx in semantic_label_idx]
+    # assert(len(semantic_label_idx)==20)
+    semantic_label_idx = np.arange(39)
 
     logger.info(cfg)
 
@@ -56,6 +57,10 @@ def test(model, model_fn, data_name, epoch):
             import data.scan2cad_inst
             dataset = data.scan2cad_inst.Dataset(test=True)
             dataset.testLoader()
+    elif cfg.dataset == 'partnet':
+        import data.partnet_inst as PartNetDataset
+        dataset = PartNetDataset.Dataset(test=True)
+        dataset.testLoader()
 
     dataloader = dataset.test_data_loader
 
@@ -66,7 +71,7 @@ def test(model, model_fn, data_name, epoch):
         matches = {}
         for i, batch in enumerate(dataloader):
             N = batch['feats'].shape[0]
-            test_scene_name = dataset.test_file_names[int(batch['id'][0])].split('/')[-1][:12]
+            test_scene_name = dataset.test_file_names[int(batch['id'][0])] #.split('/')[-1][:12]
 
             start1 = time.time()
             preds = model_fn(batch, model, epoch)
@@ -126,7 +131,7 @@ def test(model, model_fn, data_name, epoch):
                     pred_info['conf'] = cluster_scores.cpu().numpy()
                     pred_info['label_id'] = cluster_semantic_id.cpu().numpy()
                     pred_info['mask'] = clusters.cpu().numpy()
-                    gt_file = os.path.join(cfg.data_root, cfg.dataset, cfg.split + '_gt', test_scene_name + '.txt')
+                    gt_file = os.path.join(cfg.data_root, cfg.dataset, cfg.partnet_root, cfg.category, cfg.split + '_gt', test_scene_name + '.txt')
                     gt2pred, pred2gt = eval.assign_instances_for_scan(test_scene_name, pred_info, gt_file)
                     if gt2pred == None and pred2gt == None: continue
                     matches[test_scene_name] = {}
@@ -163,8 +168,11 @@ def test(model, model_fn, data_name, epoch):
             start = time.time()
 
             ##### print
-            logger.info(f"instance iter: {(batch['id'][0] + 1):4d}/{len(dataset.test_files):4d} {test_scene_name:13s} point_num: {N:6d} ncluster: {nclusters:2d} time: total {end:.2f}s inference {end1:.2f}s save {end3:.2f}s")
-
+            if epoch > cfg.prepare_epochs:
+                logger.info(f"instance iter: {(batch['id'][0] + 1):4d}/{len(dataset.test_files):4d} {test_scene_name:13s} point_num: {N:6d} ncluster: {nclusters:2d} time: total {end:.2f}s inference {end1:.2f}s save {end3:.2f}s")
+            else:
+                logger.info(f"instance iter: {(batch['id'][0] + 1):4d}/{len(dataset.test_files):4d} {test_scene_name:13s} point_num: {N:6d} time: total {end:.2f}s inference {end1:.2f}s save {end3:.2f}s")
+                
         ##### evaluation
         if cfg.eval:
             ap_scores = eval.evaluate_matches(matches)
@@ -184,6 +192,11 @@ def non_max_suppression(ious, scores, threshold):
         ixs = np.delete(ixs, 0)
     return np.array(pick, dtype=np.int32)
 
+CLASSES_MAP = {
+    'chair': 38+1,
+    'storagefurniture': 25+1,
+    'table': 50+1
+}
 
 if __name__ == '__main__':
     init()
@@ -192,6 +205,8 @@ if __name__ == '__main__':
     exp_name = cfg.config.split('/')[-1][:-5]
     model_name = exp_name.split('_')[0]
     data_name = exp_name.split('_')[-1]
+
+    cfg.classes = CLASSES_MAP[cfg.category] 
 
     ##### model
     logger.info('=> creating model ...')

@@ -21,8 +21,10 @@ class Dataset:
     def __init__(self, test=False):
         self.data_root = cfg.data_root          # data
         self.dataset = cfg.dataset              # partnet
-        self.partnet_root = cfg.partnet_root    # partnet_pts
         self.filename_suffix = cfg.filename_suffix
+
+        self.partnet_root = cfg.partnet_root    # partnet_pts
+        self.partnet_path = self.partnet_root + '/' + cfg.category
 
         self.batch_size = cfg.batch_size
         self.train_workers = cfg.train_workers
@@ -43,14 +45,14 @@ class Dataset:
         data_path = os.path.join(self.data_root, self.dataset, self.partnet_path)
         with open(os.path.join(data_path, f'{split}.txt'), 'r') as f:
             file_names = [item.rstrip() for item in f.readlines()]
-        files = [torch.load(os.path.join(data_path, i)) for i in file_names]
+        files = [torch.load(os.path.join(data_path, i+self.filename_suffix)) for i in file_names]
 
-        return files
+        return files, file_names
 
     def trainLoader(self):
-        self.train_files = self.load_split_files('train')
+        self.train_files, _ = self.load_split_files('train')
 
-        logger.info('Training samples: {}/{}'.format(len(self.train_files), len(self.train_file_names)))
+        logger.info('Training samples: {}'.format(len(self.train_files)))
 
         train_set = list(range(len(self.train_files)))
         self.train_data_loader = DataLoader(train_set, batch_size=self.batch_size, collate_fn=self.trainMerge, num_workers=self.train_workers,
@@ -58,9 +60,9 @@ class Dataset:
 
 
     def valLoader(self):
-        self.val_files = self.load_split_files('val')
+        self.val_files, _ = self.load_split_files('val')
 
-        logger.info('Validation samples: {}/{}'.format(len(self.val_files), len(self.val_file_names)))
+        logger.info('Validation samples: {}'.format(len(self.val_files)))
 
         val_set = list(range(len(self.val_files)))
         self.val_data_loader = DataLoader(val_set, batch_size=self.batch_size, collate_fn=self.valMerge, num_workers=self.val_workers,
@@ -68,7 +70,7 @@ class Dataset:
 
 
     def testLoader(self):
-        self.test_files = self.load_split_files('test')
+        self.test_files, self.test_file_names = self.load_split_files(self.test_split)
 
         logger.info('Testing samples ({}): {}'.format(self.test_split, len(self.test_files)))
 
@@ -190,7 +192,10 @@ class Dataset:
             """
             xyz_origin, label, gt_mask, gt_other_mask, gt_valid = self.train_files[idx]
 
-            instance_label = np.argmax(gt_mask.transpose(), axis=1) # (0, 0~num_ins-1)
+            xyz_mean = np.mean(xyz_origin, axis=0)
+            xyz_origin -= xyz_mean
+
+            instance_label = np.argmax(gt_mask.transpose(), axis=1) # (0, num_ins-1)
 
             # jitter / flip x / rotation
             xyz_middle = self.dataAugment(xyz_origin, True, True, True)
@@ -271,9 +276,13 @@ class Dataset:
 
         total_inst_num = 0
         for i, idx in enumerate(id):
-            xyz_origin, rgb, label, instance_label = self.val_files[idx]
+            xyz_origin, label, gt_mask, gt_other_mask, gt_valid = self.val_files[idx]
 
-            rgb = rgb.astype(np.float32)
+            xyz_mean = np.mean(xyz_origin, axis=0)
+            xyz_origin -= xyz_mean
+
+            instance_label = np.argmax(gt_mask.transpose(), axis=1) # (0, 0~num_ins-1)
+            # rgb = rgb.astype(np.float32)
             
             ### flip x / rotation
             xyz_middle = self.dataAugment(xyz_origin, False, True, True)
@@ -289,7 +298,7 @@ class Dataset:
 
             xyz_middle = xyz_middle[valid_idxs]
             xyz = xyz[valid_idxs]
-            rgb = rgb[valid_idxs]
+            # rgb = rgb[valid_idxs]
             label = label[valid_idxs]
             instance_label = self.getCroppedInstLabel(instance_label, valid_idxs)
 
@@ -298,7 +307,7 @@ class Dataset:
             inst_info = inst_infos["instance_info"]  # (n, 9), (cx, cy, cz, minx, miny, minz, maxx, maxy, maxz)
             inst_pointnum = inst_infos["instance_pointnum"]  # (nInst), list
 
-            instance_label[np.where(instance_label != -1)] += total_inst_num
+            instance_label[np.where(instance_label != -100)] += total_inst_num
             total_inst_num += inst_num
 
             ### merge the scene to the batch
@@ -306,7 +315,7 @@ class Dataset:
 
             locs.append(torch.cat([torch.LongTensor(xyz.shape[0], 1).fill_(i), torch.from_numpy(xyz).long()], 1))
             locs_float.append(torch.from_numpy(xyz_middle))
-            feats.append(torch.from_numpy(rgb))
+            # feats.append(torch.from_numpy(rgb))
             labels.append(torch.from_numpy(label))
             instance_labels.append(torch.from_numpy(instance_label))
 
@@ -318,7 +327,7 @@ class Dataset:
 
         locs = torch.cat(locs, 0)                                  # long (N, 1 + 3), the batch item idx is put in locs[:, 0]
         locs_float = torch.cat(locs_float, 0).to(torch.float32)    # float (N, 3)
-        feats = torch.cat(feats, 0)                                # float (N, C)
+        feats = torch.zeros_like(locs_float)                       # float (N, C)
         labels = torch.cat(labels, 0).long()                       # long (N)
         instance_labels = torch.cat(instance_labels, 0).long()     # long (N)
 
@@ -344,16 +353,21 @@ class Dataset:
         batch_offsets = [0]
         for i, idx in enumerate(id):
             if self.test_split == 'train':
-                xyz_origin, rgb, label, instance_label = self.test_files[idx]
+                xyz_origin, label, gt_mask, gt_valid, gt_other_mask = self.test_files[idx]
             elif self.test_split == 'val':
-                xyz_origin, rgb, label, instance_label = self.test_files[idx]
+                xyz_origin, label, gt_mask, gt_valid, gt_other_mask  = self.test_files[idx]
             elif self.test_split == 'test':
-                xyz_origin, rgb = self.test_files[idx]
+                xyz_origin = self.test_files[idx]
             else:
                 print("Wrong test split: {}!".format(self.test_split))
                 exit(0)
 
-            rgb = rgb.astype(np.float32)
+            # rgb = rgb.astype(np.float32)
+            # xyz_mean = np.mean(xyz_origin, axis=0)
+            # xyz_origin -= xyz_mean
+
+            instance_label = np.argmax(gt_mask.transpose(), axis=1) # (0, num_ins-1)
+            check = np.sum(gt_mask.transpose(), axis=1)
 
             ### flip x / rotation
             xyz_middle = self.dataAugment(xyz_origin, False, False, False)
@@ -369,14 +383,14 @@ class Dataset:
 
             locs.append(torch.cat([torch.LongTensor(xyz.shape[0], 1).fill_(i), torch.from_numpy(xyz).long()], 1))
             locs_float.append(torch.from_numpy(xyz_middle))
-            feats.append(torch.from_numpy(rgb))
+            # feats.append(torch.from_numpy(rgb))
 
         ### merge all the scenes in the batch
         batch_offsets = torch.tensor(batch_offsets, dtype=torch.int)  # int (B+1)
 
         locs = torch.cat(locs, 0)                                         # long (N, 1 + 3), the batch item idx is put in locs[:, 0]
         locs_float = torch.cat(locs_float, 0).to(torch.float32)           # float (N, 3)
-        feats = torch.cat(feats, 0)                                       # float (N, C)
+        feats = torch.zeros_like(locs_float)                              # float (N, C)
 
         spatial_shape = np.clip((locs.max(0)[0][1:] + 1).numpy(), self.full_scale[0], None)  # long (3)
 

@@ -121,6 +121,11 @@ def eval_epoch(val_loader, model, model_fn, epoch):
             if k in visual_dict.keys():
                 writer.add_scalar(k + '_eval', am_dict[k].avg, epoch)
 
+CLASSES_MAP = {
+    'chair': 38+1,
+    'storagefurniture': 25+1,
+    'table': 50+1
+}
 
 if __name__ == '__main__':
     ##### init
@@ -141,11 +146,13 @@ if __name__ == '__main__':
         print("Error: no model - " + model_name)
         exit(0)
 
+    cfg.classes = CLASSES_MAP[cfg.category] 
     model = Network(cfg)
 
     use_cuda = torch.cuda.is_available()
     logger.info('cuda available: {}'.format(use_cuda))
     assert use_cuda
+    torch.cuda.set_device(cfg.device)
     model = model.cuda()
 
     # logger.info(model)
@@ -176,9 +183,15 @@ if __name__ == '__main__':
             dataset = data.scan2cad_inst.Dataset()
             dataset.trainLoader()
             dataset.valLoader()
+    elif cfg.dataset == 'partnet':
+        import data.partnet_inst as PartNetDataset
+        dataset = PartNetDataset.Dataset()
+        dataset.trainLoader()
+        dataset.valLoader()
 
     ##### resume
-    start_epoch = utils.checkpoint_restore(model, cfg.exp_path, cfg.config.split('/')[-1][:-5], use_cuda)      # resume from the latest epoch, or specify the epoch to restore
+    start_epoch = utils.checkpoint_restore(model, cfg.exp_path, cfg.config.split('/')[-1][:-5], use_cuda) #, \
+        # epoch=48, dist=False, f=cfg.pretrain)      # resume from the latest epoch, or specify the epoch to restore
 
     ##### train and val
     for epoch in range(start_epoch, cfg.epochs + 1):

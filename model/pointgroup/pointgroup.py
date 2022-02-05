@@ -145,7 +145,7 @@ class PointGroup(nn.Module):
 
         #### backbone
         self.input_conv = spconv.SparseSequential(
-            spconv.SubMConv3d(input_c, m, kernel_size=3, padding=1, bias=False, indice_key='subm1')
+            spconv.SubMConv3d(input_c, m, kernel_size=3, padding=1, bias=False, indice_key='subm0')
         )
 
         self.unet = UBlock([m, 2*m, 3*m, 4*m, 5*m, 6*m, 7*m], norm_fn, block_reps, block, indice_key_id=1)
@@ -343,7 +343,8 @@ def model_fn_decorator(test=False):
         spatial_shape = batch['spatial_shape']
 
         if cfg.use_coords:
-            feats = torch.cat((feats, coords_float), 1)
+            # feats = torch.cat((feats, coords_float), 1)
+            feats = coords_float
         voxel_feats = pointgroup_ops.voxelization(feats, v2p_map, cfg.mode)  # (M, C), float, cuda
 
         input_ = spconv.SparseConvTensor(voxel_feats, voxel_coords.int(), spatial_shape, cfg.batch_size)
@@ -390,7 +391,8 @@ def model_fn_decorator(test=False):
         spatial_shape = batch['spatial_shape']
 
         if cfg.use_coords:
-            feats = torch.cat((feats, coords_float), 1)
+            # feats = torch.cat((feats, coords_float), 1)
+            feats = coords_float
         voxel_feats = pointgroup_ops.voxelization(feats, v2p_map, cfg.mode)  # (M, C), float, cuda
 
         input_ = spconv.SparseConvTensor(voxel_feats, voxel_coords.int(), spatial_shape, cfg.batch_size)

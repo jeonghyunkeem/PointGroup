@@ -71,3 +71,4 @@ dataset/scannetv2/val_gt
 
 dataset/scan2cad/data3
 dataset/scan2cad/data4
+dataset/partnet/partnet_pts
